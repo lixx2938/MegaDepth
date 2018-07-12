@@ -1,3 +1,12 @@
+# Modifications
+
+- added helper functions to demo.py
+- commented out all CUDA related code to run on personal Mac w/o Nvidia GPU
+
+---
+**Readme from original repository**
+---
+
 # MegaDepth: Learning Single-View Depth Prediction from Internet Photos
 
 This is a code of the algorithm described in "MegaDepth: Learning Single-View Depth Prediction from Internet Photos, Z. Li and N. Snavely, CVPR 2018". The code skeleton is based on "https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix". If you use our code or models for academic purposes, please consider citing:
