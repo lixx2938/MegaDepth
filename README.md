@@ -1,6 +1,7 @@
 # Modifications
 
-- added helper functions to demo.py
+- added helper functions to ~~demo.py~~ `predict_depth.py`
+- `predict_depth.py` saves all depth text files in *image coordinates*
 - commented out all CUDA related code to run on personal Mac w/o Nvidia GPU
 
 ---
