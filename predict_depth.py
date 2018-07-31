@@ -12,6 +12,9 @@ from skimage import io
 from skimage.transform import resize
 import pickle
 
+# Example use
+# python demo.py --images '/Users/Hallee/Desktop/newdata/'
+
 # required dimensions for the provided model
 INPUT_WIDTH = 384
 INPUT_HEIGHT = 512
@@ -31,6 +34,9 @@ def predict_depth(model, img_path):
 
         orig_height = img.shape[0]
         orig_width = img.shape[1]
+        print("Original Image Dimensions")
+        print("Height: ", orig_height)
+        print("Width: ", orig_width)
 
         img = resize(img, (INPUT_HEIGHT, INPUT_WIDTH), order = 1)
         input_img =  torch.from_numpy( np.transpose(img, (2,0,1)) ).contiguous().float()
@@ -41,55 +47,64 @@ def predict_depth(model, img_path):
         pred_log_depth = model.netG.forward(input_images)
         pred_log_depth = torch.squeeze(pred_log_depth)
 
+        # convert from log relative depth to relative depth
         pred_depth = torch.exp(pred_log_depth)
+        # convert from tensor to numpy array
+        pred_depth = pred_depth.data.cpu().numpy()
 
-        # saving predicted depth as a pickle
-        pickle_path = "./images/" + name + "_depth.p"
+        #saving predicted depth as a pickle
+        pickle_path = "./output/" + name + "_depth.p"
         print("Saving depth map to... " +  pickle_path)
         pickle.dump(pred_depth, open(pickle_path, "wb" ) )
 
+        # resize the array to be the original image size
+        resized_depth = resize_depth(pred_depth, orig_width, orig_height)
+
         ## Making inverse depth image
 
-        # visualize prediction using inverse depth, so that we don't need sky segmentation (if you want to use RGB map for visualization, \
-        # you have to run semantic segmentation to mask the sky first since the depth of sky is random from CNN)
-        pred_inv_depth = 1/pred_depth
-        pred_inv_depth = pred_inv_depth.data.cpu().numpy()
-
+        # Note from MegaDepth authors:
+        # visualize prediction using inverse depth, so that we don't need sky
+        # segmentation (if you want to use RGB map for visualization, \
+        # you have to run semantic segmentation to mask the sky first since the
+        # depth of sky is random from CNN)
+        pred_inv_depth = 1/resized_depth
         # you might also use percentile for better visualization
-        pred_inv_depth = pred_inv_depth/np.amax(pred_inv_depth) # convert from tensor to array
-        resized_inv_pred_depth = resize(pred_inv_depth, (orig_height, orig_width))
+        pred_inv_depth = pred_inv_depth/np.amax(pred_inv_depth)
 
-        # saving depth image
-        io.imsave("./images/" + name + "_depth.png", resized_inv_pred_depth)
+        # saving interse depth image
+        io.imsave("./output/" + name + "_inv_depth.png", pred_inv_depth)
 
         ## Saving depth map
-        pred_depth = pred_depth.data.cpu().numpy() # convert from tensor to array
-        resized_pred_depth = resize_depth(pred_depth, orig_height, orig_width)
-        #resized_pred_depth = rescale_depth(resized_pred_depth, 255.0)
-
+        resized_pred_depth = resize_depth(pred_depth, orig_width, orig_height)
         points = convert_array_to_points(resized_pred_depth)
+
         # saving point cloud
         save_points(points, name)
-        #sys.exit()
 
-def resize_depth(pred_depth, orig_height, orig_width):
+def rescale_depth(arr, new_min_depth, new_max_depth):
     """
-    summary: rescales tensor to be size of orig_height by orig_width
+    summary: rescales depths to be from new_min_depth to new_max_depth
     """
-    pred_depth = rescale_depth(pred_depth, 1)
-    resized_pred_depth = resize(pred_depth, (orig_height, orig_width))
-    return(resized_pred_depth)
+    max_depth = np.amax(arr)
+    min_depth = np.amin(arr)
+    new_arr = new_min_depth + (new_max_depth/max_depth)*(arr-min_depth)
+    return(new_arr)
 
-def rescale_depth(pred_depth, new_max_depth):
+def resize_depth(pred_depth, orig_width, orig_height):
     """
-    summary: rescales depths to be from 0 to max_depth
+    summary: resizes the array of depth values
+    if we don't rescale the values to be between 0,1 we get a ValueError from
+    skimage's resize function
     """
-    max_depth = np.amax(pred_depth)
     min_depth = np.amin(pred_depth)
-    new_depth_map = new_max_depth*(pred_depth-min_depth)/max_depth
-    return(new_depth_map)
+    max_depth = np.amax(pred_depth)
+    scaled_depth = rescale_depth(pred_depth, 0, 1)
+    resized_depth = resize(scaled_depth, (orig_height, orig_width),
+                            anti_aliasing=True, mode='reflect')
+    new_depth = rescale_depth(resized_depth, min_depth, max_depth)
+    return(new_depth)
 
-def save_points(points, name):
+def save_points(points, name, path="./output/", label="depth"):
     """
     summary: saves converted points into textfile of (x,y,z) coordinates
     parameters:
@@ -97,23 +112,25 @@ def save_points(points, name):
         name - (str) name of image being
     returns: na
     """
-    xyz_path = "./images/" + name + "_depth.txt"
-    print("Saving depth map coordinates to... " +  xyz_path)
+    xyz_path = path + name + "_" + label + ".txt"
+    print("Saving coordinates to... " +  xyz_path)
     np.savetxt(xyz_path, points,
         fmt=['%.0d','%.0d','%.10f'],
         delimiter=' ',
         comments='', # gets ride of hashtag in header
         header = str(points.shape[0]))
-
+    return()
 
 def convert_array_to_points(points):
     """
     summary: converts m by n array of values to an array of x,y,z coordinates
+    notes: originally this function converted to cartesian x,y
+           it has since been changed to save coordinate as image coordinates!
     """
     # putting into (x,y,z) format
     m,n = points.shape
     R,C = np.mgrid[:m,:n]
-    points = np.column_stack((n-C.ravel(),m-R.ravel(), points.ravel()))
+    points = np.column_stack((C.ravel(), R.ravel(), points.ravel()))
     return(points)
 
 if __name__ == "__main__":
@@ -124,8 +141,9 @@ if __name__ == "__main__":
     model = create_model(opt)
     print("=========================================================")
 
-    mydir = '/Users/Hallee/Desktop/newdata/'
-    image_list = [mydir + f for f in os.listdir(mydir)]
+    # e.g. '/Users/Hallee/Desktop/newdata/'
+    mydir = opt.images
+    image_list = [mydir + f for f in os.listdir(mydir) if f[0] != "."]
     for i in range(len(image_list)):
         predict_depth(model, image_list[i])
         print("Done with " + os.path.basename(os.path.normpath(image_list[i])).split('.')[0])
