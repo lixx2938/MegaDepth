@@ -53,9 +53,9 @@ def predict_depth(model, img_path):
         pred_depth = pred_depth.data.cpu().numpy()
 
         #saving predicted depth as a pickle
-        pickle_path = "./output/" + name + "_depth.p"
-        print("Saving depth map to... " +  pickle_path)
-        pickle.dump(pred_depth, open(pickle_path, "wb" ) )
+        #pickle_path = "./output/" + name + "_depth.p"
+        #print("Saving depth map to... " +  pickle_path)
+        #pickle.dump(pred_depth, open(pickle_path, "wb" ) )
 
         # resize the array to be the original image size
         resized_depth = resize_depth(pred_depth, orig_width, orig_height)
@@ -72,14 +72,15 @@ def predict_depth(model, img_path):
         pred_inv_depth = pred_inv_depth/np.amax(pred_inv_depth)
 
         # saving interse depth image
-        io.imsave("./output/" + name + "_inv_depth.png", pred_inv_depth)
+        dir_path = os.path.join(os.path.dirname(__file__), './output/')
+        io.imsave(dir_path + name + "_inv_depth.png", pred_inv_depth)
 
         ## Saving depth map
         resized_pred_depth = resize_depth(pred_depth, orig_width, orig_height)
         points = convert_array_to_points(resized_pred_depth)
 
         # saving point cloud
-        save_points(points, name)
+        save_points(points, name, path=dir_path)
 
 def rescale_depth(arr, new_min_depth, new_max_depth):
     """
@@ -135,17 +136,22 @@ def convert_array_to_points(points):
 
 if __name__ == "__main__":
 
+    print(os.path.dirname(os.path.abspath(__file__)))
+
     # Loading the model
     #opt = TestOptions().parse()
     opt = TrainOptions().parse()
     model = create_model(opt)
     print("=========================================================")
 
+    predict_depth(model, opt.image)
+    print("Done with " + os.path.basename(os.path.normpath(opt.image)).split('.')[0])
+
     # e.g. '/Users/Hallee/Desktop/newdata/'
-    mydir = opt.images
-    image_list = [mydir + f for f in os.listdir(mydir) if f[0] != "."]
-    for i in range(len(image_list)):
-        predict_depth(model, image_list[i])
-        print("Done with " + os.path.basename(os.path.normpath(image_list[i])).split('.')[0])
+    #mydir = opt.images
+    #image_list = [mydir + f for f in os.listdir(mydir) if f[0] != "."]
+    #for i in range(len(image_list)):
+    #    predict_depth(model, image_list[i])
+    #    print("Done with " + os.path.basename(os.path.normpath(image_list[i])).split('.')[0])
 
     print("Done!")
